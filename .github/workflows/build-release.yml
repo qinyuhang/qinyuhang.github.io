@@ -1,0 +1,92 @@
+name: build-and-release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: blog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SITE_URL: ${{ vars.SITE_URL }}
+      PUBLIC_UTTERANCES_REPO: ${{ vars.PUBLIC_UTTERANCES_REPO }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate production configuration
+        if: github.event_name != 'pull_request'
+        run: |
+          test -n "$SITE_URL" || {
+            echo "Set the SITE_URL repository variable before publishing." >&2
+            exit 1
+          }
+      - name: Build static site
+        run: npm run build
+      - name: Validate output
+        run: |
+          set -euo pipefail
+          test -s dist/index.html
+          test -s dist/404.html
+          test -s dist/rss.xml
+          ! grep -R -E '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|CF_API_TOKEN|GITHUB_TOKEN)' dist
+      - name: Package release
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          tar -C dist --sort=name --mtime="@$SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner -czf blog.tar.gz .
+          sha256sum blog.tar.gz > blog.tar.gz.sha256
+      - name: Upload release candidate
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-${{ github.sha }}
+          path: |
+            blog.tar.gz
+            blog.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: blog-${{ github.sha }}
+      - name: Publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: blog-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving immutable assets unchanged."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            blog.tar.gz blog.tar.gz.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --notes "Static blog build for commit $GITHUB_SHA" \
+            --latest

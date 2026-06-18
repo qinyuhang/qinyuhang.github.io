@@ -1,0 +1,24 @@
+---
+const repository = import.meta.env.PUBLIC_UTTERANCES_REPO;
+---
+
+{repository && (
+  <section class="comments" aria-label="评论" data-repository={repository}>
+    <h2>评论</h2>
+    <script is:inline>
+      const container = document.currentScript?.parentElement;
+      const repository = container?.dataset.repository;
+      if (container && repository) {
+        const comments = document.createElement('script');
+        comments.src = 'https://utteranc.es/client.js';
+        comments.async = true;
+        comments.crossOrigin = 'anonymous';
+        comments.setAttribute('repo', repository);
+        comments.setAttribute('issue-term', 'pathname');
+        comments.setAttribute('label', 'comments');
+        comments.setAttribute('theme', 'github-dark');
+        container.append(comments);
+      }
+    </script>
+  </section>
+)}

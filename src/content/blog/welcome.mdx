@@ -1,0 +1,16 @@
+---
+title: 站点开始运行
+description: Astro、Markdown 和自动发布流程已经就绪。
+publishedAt: 2026-06-18
+tags: [Astro, MDX, Meta]
+---
+
+export const Pipeline = () => <strong>GitHub Actions → Release → VPS → Caddy</strong>;
+
+这个站点使用 Astro 构建。日常发布文章时，只需要在 `src/content/blog` 中添加 Markdown 或 MDX 文件。
+
+## 发布方式
+
+<Pipeline />
+
+推送到默认分支后，GitHub Actions 会构建静态文件并发布带校验和的 Release。VPS 定时拉取最新版本，校验完成后原子切换站点目录。
