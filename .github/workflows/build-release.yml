@@ -90,3 +90,55 @@ jobs:
             --title "$TAG" \
             --notes "Static blog build for commit $GITHUB_SHA" \
             --latest
+
+  notify:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Notify VPS to pull the release
+        env:
+          WEBHOOK_URL: ${{ vars.BLOG_DEPLOY_WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.BLOG_DEPLOY_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$WEBHOOK_URL" || {
+            echo "Set the BLOG_DEPLOY_WEBHOOK_URL repository variable." >&2
+            exit 1
+          }
+          test -n "$WEBHOOK_SECRET" || {
+            echo "Set the BLOG_DEPLOY_WEBHOOK_SECRET repository secret." >&2
+            exit 1
+          }
+
+          TIMESTAMP="$(date +%s)"
+          export TIMESTAMP
+          python3 - <<'PY'
+          import hashlib
+          import hmac
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.dumps(
+              {"repository": os.environ["GITHUB_REPOSITORY"], "sha": os.environ["GITHUB_SHA"]},
+              separators=(",", ":"),
+          ).encode()
+          signature = hmac.new(
+              os.environ["WEBHOOK_SECRET"].encode(),
+              os.environ["TIMESTAMP"].encode() + b"." + payload,
+              hashlib.sha256,
+          ).hexdigest()
+          Path("payload.json").write_bytes(payload)
+          Path("signature.txt").write_text("sha256=" + signature, encoding="ascii")
+          PY
+
+          curl --fail --show-error --silent \
+            --retry 3 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Blog-Timestamp: $TIMESTAMP" \
+            -H "X-Blog-Signature: $(cat signature.txt)" \
+            --data-binary @payload.json \
+            "$WEBHOOK_URL"
