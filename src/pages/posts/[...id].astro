@@ -24,3 +24,17 @@ const { Content } = await render(post);
     <Comments />
   </article>
 </BaseLayout>
+
+<script>
+  document.querySelectorAll<HTMLTableElement>('.article-body table').forEach((table) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-scroll';
+    table.parentNode?.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  });
+
+  document.querySelectorAll<HTMLAnchorElement>('.article-body a[href^="http"]').forEach((link) => {
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+  });
+</script>
